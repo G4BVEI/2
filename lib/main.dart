@@ -96,11 +96,11 @@ class Participante {
   Participante({required this.nome, this.facebookUrl});
 }
 
-/// Pessoa logada. O facebookUrl pode ser preenchido DEPOIS do cadastro,
-/// quando o usuário tocar em "Conectar Facebook" dentro do app.
+/// Pessoa logada. facebookUrl pode ser preenchido depois, na tela
+/// obrigatória de conectar Facebook.
 class Pessoa {
   String nome;
-  String documento;
+  String? documento; // agora opcional
   String? endereco;
   String? telefone;
   final TipoUsuario tipo;
@@ -108,7 +108,7 @@ class Pessoa {
 
   Pessoa({
     required this.nome,
-    required this.documento,
+    this.documento,
     this.endereco,
     this.telefone,
     required this.tipo,
@@ -205,6 +205,11 @@ class AppState extends ChangeNotifier {
     ),
   ];
 
+  /// Marca que o usuário JÁ passou pela tela de conectar Facebook.
+  /// Fica em memória enquanto durar a sessão.
+  bool get facebookPendente =>
+      usuarioLogado != null && !usuarioLogado!.facebookConectado;
+
   void login(Pessoa p) {
     usuarioLogado = p;
     notifyListeners();
@@ -215,9 +220,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Coloca o SEU link do Facebook em TODOS os participantes
-  /// de TODOS os eventos. É isso que faz o botão do Facebook
-  /// de qualquer pessoa abrir o SEU perfil.
+  /// Coloca o SEU link em TODOS os participantes.
   void _aplicarMeuLinkEmTodos() {
     final user = usuarioLogado;
     final meuLink = user?.facebookUrl;
@@ -230,8 +233,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Chama o SDK do Facebook, salva o link do perfil na pessoa logada
-  /// e replica esse link em todos os participantes.
   Future<bool> conectarFacebook() async {
     final user = usuarioLogado;
     if (user == null) return false;
@@ -385,6 +386,12 @@ class _RootGate extends StatelessWidget {
       builder: (_, __) {
         final user = AppState.instance.usuarioLogado;
         if (user == null) return const LoginFlow();
+
+        // Etapa OBRIGATÓRIA: conectar Facebook antes de entrar.
+        if (!user.facebookConectado) {
+          return const ConectarFacebookPage();
+        }
+
         if (user.tipo == TipoUsuario.organizador) {
           return const OrganizadorDashboard();
         }
@@ -628,15 +635,18 @@ class ChipStatus extends StatelessWidget {
   }
 }
 
-/// Banner de "Conectar Facebook" que aparece nas telas pós-cadastro.
-class BannerConectarFacebook extends StatefulWidget {
-  const BannerConectarFacebook({super.key});
+// ============================================================
+// TELA OBRIGATÓRIA DE CONECTAR FACEBOOK
+// ============================================================
+
+class ConectarFacebookPage extends StatefulWidget {
+  const ConectarFacebookPage({super.key});
 
   @override
-  State<BannerConectarFacebook> createState() => _BannerConectarFacebookState();
+  State<ConectarFacebookPage> createState() => _ConectarFacebookPageState();
 }
 
-class _BannerConectarFacebookState extends State<BannerConectarFacebook> {
+class _ConectarFacebookPageState extends State<ConectarFacebookPage> {
   bool _carregando = false;
 
   Future<void> _conectar() async {
@@ -645,120 +655,156 @@ class _BannerConectarFacebookState extends State<BannerConectarFacebook> {
     if (!mounted) return;
     setState(() => _carregando = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-        backgroundColor: ok ? AppColors.sucesso : Colors.red,
-        content: Row(
-          children: [
-            Icon(
-              ok ? Icons.check_circle : Icons.error_outline,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                ok
-                    ? 'Facebook conectado! Seu link já aparece para todos.'
-                    : 'Não foi possível conectar o Facebook.',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          backgroundColor: Colors.red,
+          content: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Não foi possível conectar. Tente novamente.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      await FacebookAuth.instance.logOut();
+    } catch (_) {}
+    AppState.instance.logout();
   }
 
   @override
   Widget build(BuildContext context) {
     final user = AppState.instance.usuarioLogado;
-    if (user == null || user.facebookConectado) {
-      return const SizedBox.shrink();
-    }
+    final primeiroNome = user?.nome.split(' ').first ?? '';
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.facebook.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.facebook.withOpacity(0.35),
-          width: 1.4,
-        ),
-      ),
-      child: Row(
+    return Scaffold(
+      body: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(
-              color: AppColors.facebook,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.facebook,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Conecte seu Facebook',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: AppColors.texto,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Assim os outros participantes podem te encontrar.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textoSecundario,
-                  ),
-                ),
-              ],
+          HeaderGradiente(
+            titulo: 'Falta só um passo',
+            subtitulo: 'Conecte seu Facebook para continuar',
+            icone: Icons.facebook,
+            cores: const [AppColors.facebook, Color(0xFF0D47A1)],
+            altura: 240,
+            trailing: _IconeCircular(
+              icone: Icons.logout_rounded,
+              onTap: _logout,
             ),
           ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: _carregando ? null : _conectar,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.facebook,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-            ),
-            child: _carregando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: AppShadows.media,
                     ),
-                  )
-                : const Text(
-                    'Conectar',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.facebook.withOpacity(0.10),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.facebook,
+                            size: 56,
+                            color: AppColors.facebook,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Olá, $primeiroNome! 👋',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.texto,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Para participar dos eventos, precisamos que você conecte seu Facebook. '
+                          'Assim os outros participantes conseguem te encontrar e falar com você.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: AppColors.textoSecundario,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton.icon(
+                            onPressed: _carregando ? null : _conectar,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.facebook,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              elevation: 0,
+                            ),
+                            icon: _carregando
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.facebook, size: 22),
+                            label: Text(
+                              _carregando
+                                  ? 'Conectando...'
+                                  : 'Conectar com Facebook',
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'É obrigatório para continuar.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textoSecundario,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -767,7 +813,7 @@ class _BannerConectarFacebookState extends State<BannerConectarFacebook> {
 }
 
 // ============================================================
-// LOGIN EM 2 ETAPAS — SEM Facebook aqui
+// LOGIN EM 2 ETAPAS (com "Já tenho conta" + Facebook)
 // ============================================================
 
 class LoginFlow extends StatefulWidget {
@@ -831,6 +877,7 @@ class _EscolhaTipoPage extends StatelessWidget {
             altura: 240,
           ),
           const SizedBox(height: 28),
+
           const Text(
             'Quem é você?',
             style: TextStyle(
@@ -859,6 +906,230 @@ class _EscolhaTipoPage extends StatelessWidget {
                     ),
                   ),
               ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // ---- Divisor "ou" ----
+          Row(
+            children: [
+              Expanded(
+                child: Divider(
+                  color: AppColors.textoSecundario.withOpacity(0.3),
+                  indent: 24,
+                  endIndent: 12,
+                ),
+              ),
+              const Text(
+                'ou',
+                style: TextStyle(
+                  color: AppColors.textoSecundario,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              Expanded(
+                child: Divider(
+                  color: AppColors.textoSecundario.withOpacity(0.3),
+                  indent: 12,
+                  endIndent: 24,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // ---- BOTÃO "JÁ TENHO CONTA" (Facebook), agora EMBAIXO ----
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const EntrarComFacebookPage(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.facebook,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.facebook, size: 22),
+                label: const Text(
+                  'Já tenho conta — entrar com Facebook',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tela de "já tenho conta" — loga direto com Facebook.
+class EntrarComFacebookPage extends StatefulWidget {
+  const EntrarComFacebookPage({super.key});
+
+  @override
+  State<EntrarComFacebookPage> createState() => _EntrarComFacebookPageState();
+}
+
+class _EntrarComFacebookPageState extends State<EntrarComFacebookPage> {
+  bool _carregando = false;
+
+  Future<void> _entrar() async {
+    setState(() => _carregando = true);
+    try {
+      final result = await FacebookAuth.instance.login(
+        permissions: const ['public_profile', 'email', 'user_link'],
+      );
+      if (!mounted) return;
+
+      if (result.status != LoginStatus.success) {
+        setState(() => _carregando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível entrar.')),
+        );
+        return;
+      }
+
+      final data = await FacebookAuth.instance.getUserData(
+        fields: 'id,name,email,picture.width(200),link',
+      );
+      final nome = data['name'] as String? ?? 'Usuário';
+      final link = data['link'] as String?;
+
+      // Login direto como usuário comum (idoso) já com Facebook conectado.
+      AppState.instance.login(
+        Pessoa(
+          nome: nome,
+          tipo: TipoUsuario.usuario,
+          facebookUrl: link,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _carregando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro ao entrar com Facebook.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          HeaderGradiente(
+            titulo: 'Bem-vindo de volta',
+            subtitulo: 'Entre com sua conta do Facebook',
+            icone: Icons.facebook,
+            cores: const [AppColors.facebook, Color(0xFF0D47A1)],
+            altura: 220,
+            onVoltar: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: AppShadows.media,
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: AppColors.facebook.withOpacity(0.10),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.facebook,
+                            size: 48,
+                            color: AppColors.facebook,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Usar conta do Facebook',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.texto,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Usamos seu nome e link do perfil para que outros '
+                          'participantes possam te encontrar nos eventos.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            color: AppColors.textoSecundario,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton.icon(
+                            onPressed: _carregando ? null : _entrar,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.facebook,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              elevation: 0,
+                            ),
+                            icon: _carregando
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.facebook, size: 22),
+                            label: Text(
+                              _carregando
+                                  ? 'Entrando...'
+                                  : 'Entrar com Facebook',
+                              style: const TextStyle(
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1016,10 +1287,14 @@ class _FormularioPageState extends State<_FormularioPage> {
 
   void _entrar() {
     if (!_formKey.currentState!.validate()) return;
+
+    // Para o IDOSO (usuário), não pedimos CPF.
+    final pedeDoc = widget.tipo != TipoUsuario.usuario;
+
     AppState.instance.login(
       Pessoa(
         nome: _nome.text.trim(),
-        documento: _doc.text.trim(),
+        documento: pedeDoc ? _doc.text.trim() : null,
         endereco: widget.tipo == TipoUsuario.usuario ? _end.text.trim() : null,
         telefone: (widget.tipo == TipoUsuario.usuario ||
                 widget.tipo == TipoUsuario.motorista)
@@ -1033,6 +1308,7 @@ class _FormularioPageState extends State<_FormularioPage> {
   @override
   Widget build(BuildContext context) {
     final t = widget.tipo;
+    final pedeDoc = t != TipoUsuario.usuario;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 32),
@@ -1068,12 +1344,15 @@ class _FormularioPageState extends State<_FormularioPage> {
                           : 'Nome completo',
                       Icons.person_outline_rounded,
                     ),
-                    const SizedBox(height: 16),
-                    _buildField(
-                      _doc,
-                      t == TipoUsuario.organizador ? 'CPF ou CNPJ' : 'CPF',
-                      Icons.badge_outlined,
-                    ),
+                    // CPF apenas para organizador e motorista.
+                    if (pedeDoc) ...[
+                      const SizedBox(height: 16),
+                      _buildField(
+                        _doc,
+                        t == TipoUsuario.organizador ? 'CPF ou CNPJ' : 'CPF',
+                        Icons.badge_outlined,
+                      ),
+                    ],
                     if (t == TipoUsuario.usuario) ...[
                       const SizedBox(height: 16),
                       _buildField(_end, 'Endereço', Icons.home_outlined),
@@ -1087,8 +1366,8 @@ class _FormularioPageState extends State<_FormularioPage> {
                     ],
                     const SizedBox(height: 26),
                     BotaoGradiente(
-                      texto: 'Entrar',
-                      icone: Icons.login_rounded,
+                      texto: 'Continuar',
+                      icone: Icons.arrow_forward_rounded,
                       cores: t.gradiente,
                       onPressed: _entrar,
                     ),
@@ -1144,7 +1423,6 @@ class MotoristaEmBrevePage extends StatelessWidget {
               onTap: () => AppState.instance.logout(),
             ),
           ),
-          const BannerConectarFacebook(),
           Expanded(
             child: Center(
               child: Padding(
@@ -1383,7 +1661,6 @@ class _OrganizadorDashboardState extends State<OrganizadorDashboard> {
                   onTap: () => AppState.instance.logout(),
                 ),
               ),
-              const BannerConectarFacebook(),
               Expanded(
                 child: eventos.isEmpty
                     ? const _EstadoVazio(
@@ -1632,7 +1909,6 @@ class ListaEventosPage extends StatelessWidget {
                   onTap: () => AppState.instance.logout(),
                 ),
               ),
-              const BannerConectarFacebook(),
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 30),
@@ -2169,8 +2445,7 @@ class EventoDetalhePage extends StatelessWidget {
 }
 
 /// Linha de um participante, com nome por extenso e botão do Facebook.
-/// O botão está SEMPRE visível e abre o link que estiver em
-/// `participante.facebookUrl` (que, no caso, é o SEU link).
+/// O botão está SEMPRE visível e abre o SEU link.
 class _LinhaParticipante extends StatelessWidget {
   final int posicao;
   final Participante participante;
@@ -2268,7 +2543,6 @@ class _LinhaParticipante extends StatelessWidget {
               ),
             ),
           ),
-          // Botão SEMPRE visível
           GestureDetector(
             onTap: () => _abrirFacebook(context),
             child: Container(
