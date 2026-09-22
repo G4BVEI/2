@@ -51,7 +51,7 @@ class AppShadows {
 }
 
 // ============================================================
-// MODELOS
+// MODELOS DE USUÁRIO / EVENTO
 // ============================================================
 
 enum TipoUsuario { organizador, motorista, usuario }
@@ -88,7 +88,6 @@ extension TipoUsuarioInfo on TipoUsuario {
       };
 }
 
-/// Participante de um evento.
 class Participante {
   final String nome;
   String? facebookUrl;
@@ -96,11 +95,9 @@ class Participante {
   Participante({required this.nome, this.facebookUrl});
 }
 
-/// Pessoa logada. facebookUrl pode ser preenchido depois, na tela
-/// obrigatória de conectar Facebook.
 class Pessoa {
   String nome;
-  String? documento; // agora opcional
+  String? documento;
   String? endereco;
   String? telefone;
   final TipoUsuario tipo;
@@ -146,6 +143,181 @@ class Evento {
 
   bool contemParticipante(String nome) =>
       participantes.any((p) => p.nome == nome);
+}
+
+// ============================================================
+// MODELOS DE BROCHES (embutidos)
+// ============================================================
+
+class Broche {
+  final String id;
+  final String nome;
+  final String descricao;
+  final String emoji;
+  final String? tipoEventoRequerido;
+  final String? eventoIdRequerido;
+  final Color corPrincipal;
+
+  const Broche({
+    required this.id,
+    required this.nome,
+    required this.descricao,
+    required this.emoji,
+    required this.corPrincipal,
+    this.tipoEventoRequerido,
+    this.eventoIdRequerido,
+  });
+}
+
+class BrocheConquistado {
+  final Broche broche;
+  final bool desbloqueado;
+  final DateTime? dataConquista;
+  final String? eventoConquistadoNome;
+
+  const BrocheConquistado({
+    required this.broche,
+    required this.desbloqueado,
+    this.dataConquista,
+    this.eventoConquistadoNome,
+  });
+}
+
+class EventoParticipado {
+  final String eventoId;
+  final String tipo;
+  final String titulo;
+  final DateTime data;
+  final bool usouCaronaSolidaria;
+
+  const EventoParticipado({
+    required this.eventoId,
+    required this.tipo,
+    required this.titulo,
+    required this.data,
+    this.usouCaronaSolidaria = false,
+  });
+}
+
+class CatalogoBroches {
+  static const List<Broche> todos = [
+    Broche(
+      id: 'broche_bingo',
+      nome: 'Rei do Bingo',
+      descricao: 'Compareça a uma tarde de bingo da comunidade.',
+      emoji: '🎱',
+      tipoEventoRequerido: 'bingo',
+      corPrincipal: Color(0xFFE0A72E),
+    ),
+    Broche(
+      id: 'broche_baile',
+      nome: 'Pé de Valsa',
+      descricao: 'Dance em um baile comunitário.',
+      emoji: '💃',
+      tipoEventoRequerido: 'baile',
+      corPrincipal: Color(0xFFD1477A),
+    ),
+    Broche(
+      id: 'broche_bazar',
+      nome: 'Caçador de Ofertas',
+      descricao: 'Visite um bazar da comunidade.',
+      emoji: '🛍️',
+      tipoEventoRequerido: 'bazar',
+      corPrincipal: Color(0xFF3E8E7E),
+    ),
+    Broche(
+      id: 'broche_caminhada',
+      nome: 'Passo Firme',
+      descricao: 'Participe de uma caminhada em grupo.',
+      emoji: '🚶',
+      tipoEventoRequerido: 'caminhada',
+      corPrincipal: Color(0xFF4A7FB5),
+    ),
+    Broche(
+      id: 'broche_cha',
+      nome: 'Chá das Boas Conversas',
+      descricao: 'Vá a um chá da tarde da comunidade.',
+      emoji: '☕',
+      tipoEventoRequerido: 'cha_da_tarde',
+      corPrincipal: Color(0xFF9B6B43),
+    ),
+    Broche(
+      id: 'broche_carona',
+      nome: 'Companhia de Viagem',
+      descricao: 'Use uma carona solidária para chegar a um evento.',
+      emoji: '🚗',
+      tipoEventoRequerido: 'carona',
+      corPrincipal: Color(0xFF6C63A6),
+    ),
+    Broche(
+      id: 'broche_frequente',
+      nome: 'Presença Cativa',
+      descricao: 'Compareça a 5 eventos diferentes.',
+      emoji: '⭐',
+      corPrincipal: Color(0xFFC98A2C),
+    ),
+  ];
+}
+
+class BrochesService {
+  static List<BrocheConquistado> calcularBroches(
+    List<EventoParticipado> historico,
+  ) {
+    final ordenado = [...historico]..sort((a, b) => a.data.compareTo(b.data));
+
+    return CatalogoBroches.todos.map((broche) {
+      if (broche.id == 'broche_frequente') {
+        final eventosDistintos = ordenado.map((e) => e.eventoId).toSet();
+        if (eventosDistintos.length >= 5) {
+          return BrocheConquistado(
+            broche: broche,
+            desbloqueado: true,
+            dataConquista: ordenado[4].data,
+            eventoConquistadoNome: 'Marco de 5 eventos',
+          );
+        }
+        return BrocheConquistado(broche: broche, desbloqueado: false);
+      }
+
+      if (broche.eventoIdRequerido != null) {
+        final match =
+            ordenado.where((e) => e.eventoId == broche.eventoIdRequerido);
+        if (match.isNotEmpty) {
+          return BrocheConquistado(
+            broche: broche,
+            desbloqueado: true,
+            dataConquista: match.first.data,
+            eventoConquistadoNome: match.first.titulo,
+          );
+        }
+        return BrocheConquistado(broche: broche, desbloqueado: false);
+      }
+
+      if (broche.id == 'broche_carona') {
+        final match = ordenado.where((e) => e.usouCaronaSolidaria);
+        if (match.isNotEmpty) {
+          return BrocheConquistado(
+            broche: broche,
+            desbloqueado: true,
+            dataConquista: match.first.data,
+            eventoConquistadoNome: match.first.titulo,
+          );
+        }
+        return BrocheConquistado(broche: broche, desbloqueado: false);
+      }
+
+      final match = ordenado.where((e) => e.tipo == broche.tipoEventoRequerido);
+      if (match.isNotEmpty) {
+        return BrocheConquistado(
+          broche: broche,
+          desbloqueado: true,
+          dataConquista: match.first.data,
+          eventoConquistadoNome: match.first.titulo,
+        );
+      }
+      return BrocheConquistado(broche: broche, desbloqueado: false);
+    }).toList();
+  }
 }
 
 // ============================================================
@@ -205,11 +377,6 @@ class AppState extends ChangeNotifier {
     ),
   ];
 
-  /// Marca que o usuário JÁ passou pela tela de conectar Facebook.
-  /// Fica em memória enquanto durar a sessão.
-  bool get facebookPendente =>
-      usuarioLogado != null && !usuarioLogado!.facebookConectado;
-
   void login(Pessoa p) {
     usuarioLogado = p;
     notifyListeners();
@@ -220,7 +387,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Coloca o SEU link em TODOS os participantes.
   void _aplicarMeuLinkEmTodos() {
     final user = usuarioLogado;
     final meuLink = user?.facebookUrl;
@@ -311,6 +477,47 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     return true;
   }
+
+  // --------- Helpers pra Geladeira de Broches ---------
+
+  /// Converte os eventos em que o usuário logado participou no formato
+  /// que o BrochesService espera.
+  List<EventoParticipado> historicoDoUsuario() {
+    final user = usuarioLogado;
+    if (user == null) return [];
+
+    return eventos
+        .where((e) => e.contemParticipante(user.nome))
+        .map(
+          (e) => EventoParticipado(
+            eventoId: e.id,
+            tipo: _tipoDoEvento(e.titulo),
+            titulo: e.titulo,
+            data: _parseData(e.data),
+            usouCaronaSolidaria: false,
+          ),
+        )
+        .toList();
+  }
+
+  String _tipoDoEvento(String titulo) {
+    final t = titulo.toLowerCase();
+    if (t.contains('bingo')) return 'bingo';
+    if (t.contains('baile')) return 'baile';
+    if (t.contains('bazar')) return 'bazar';
+    if (t.contains('caminhada')) return 'caminhada';
+    if (t.contains('chá') || t.contains('cha')) return 'cha_da_tarde';
+    return 'outro';
+  }
+
+  DateTime _parseData(String ddmmyyyy) {
+    try {
+      final p = ddmmyyyy.split('/');
+      return DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0]));
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
 }
 
 // ============================================================
@@ -387,7 +594,6 @@ class _RootGate extends StatelessWidget {
         final user = AppState.instance.usuarioLogado;
         if (user == null) return const LoginFlow();
 
-        // Etapa OBRIGATÓRIA: conectar Facebook antes de entrar.
         if (!user.facebookConectado) {
           return const ConectarFacebookPage();
         }
@@ -813,7 +1019,7 @@ class _ConectarFacebookPageState extends State<ConectarFacebookPage> {
 }
 
 // ============================================================
-// LOGIN EM 2 ETAPAS (com "Já tenho conta" + Facebook)
+// LOGIN EM 2 ETAPAS
 // ============================================================
 
 class LoginFlow extends StatefulWidget {
@@ -857,8 +1063,6 @@ class _LoginFlowState extends State<LoginFlow> {
   }
 }
 
-// ---------- ETAPA 1 ----------
-
 class _EscolhaTipoPage extends StatelessWidget {
   final void Function(TipoUsuario) onEscolher;
   const _EscolhaTipoPage({super.key, required this.onEscolher});
@@ -877,7 +1081,6 @@ class _EscolhaTipoPage extends StatelessWidget {
             altura: 240,
           ),
           const SizedBox(height: 28),
-
           const Text(
             'Quem é você?',
             style: TextStyle(
@@ -908,10 +1111,7 @@ class _EscolhaTipoPage extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 18),
-
-          // ---- Divisor "ou" ----
           Row(
             children: [
               Expanded(
@@ -938,10 +1138,7 @@ class _EscolhaTipoPage extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 18),
-
-          // ---- BOTÃO "JÁ TENHO CONTA" (Facebook), agora EMBAIXO ----
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SizedBox(
@@ -981,7 +1178,6 @@ class _EscolhaTipoPage extends StatelessWidget {
   }
 }
 
-/// Tela de "já tenho conta" — loga direto com Facebook.
 class EntrarComFacebookPage extends StatefulWidget {
   const EntrarComFacebookPage({super.key});
 
@@ -1014,7 +1210,6 @@ class _EntrarComFacebookPageState extends State<EntrarComFacebookPage> {
       final nome = data['name'] as String? ?? 'Usuário';
       final link = data['link'] as String?;
 
-      // Login direto como usuário comum (idoso) já com Facebook conectado.
       AppState.instance.login(
         Pessoa(
           nome: nome,
@@ -1254,8 +1449,6 @@ class _CartaoTipoAnimadoState extends State<_CartaoTipoAnimado>
   }
 }
 
-// ---------- ETAPA 2 ----------
-
 class _FormularioPage extends StatefulWidget {
   final TipoUsuario tipo;
   final VoidCallback onVoltar;
@@ -1288,7 +1481,6 @@ class _FormularioPageState extends State<_FormularioPage> {
   void _entrar() {
     if (!_formKey.currentState!.validate()) return;
 
-    // Para o IDOSO (usuário), não pedimos CPF.
     final pedeDoc = widget.tipo != TipoUsuario.usuario;
 
     AppState.instance.login(
@@ -1344,7 +1536,6 @@ class _FormularioPageState extends State<_FormularioPage> {
                           : 'Nome completo',
                       Icons.person_outline_rounded,
                     ),
-                    // CPF apenas para organizador e motorista.
                     if (pedeDoc) ...[
                       const SizedBox(height: 16),
                       _buildField(
@@ -1879,7 +2070,7 @@ class _EstadoVazio extends StatelessWidget {
 }
 
 // ============================================================
-// LISTA DE EVENTOS (USUÁRIO)
+// LISTA DE EVENTOS (USUÁRIO) — com botão pra Geladeira
 // ============================================================
 
 class ListaEventosPage extends StatelessWidget {
@@ -1904,9 +2095,28 @@ class ListaEventosPage extends StatelessWidget {
                 icone: Icons.celebration_rounded,
                 cores: user.tipo.gradiente,
                 altura: 200,
-                trailing: _IconeCircular(
-                  icone: Icons.logout_rounded,
-                  onTap: () => AppState.instance.logout(),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _IconeCircular(
+                      icone: Icons.kitchen_rounded, // 🧊 Geladeira
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ParedeBrochesScreen(
+                              historico: AppState.instance.historicoDoUsuario(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                    _IconeCircular(
+                      icone: Icons.logout_rounded,
+                      onTap: () => AppState.instance.logout(),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -2203,8 +2413,6 @@ class EventoDetalhePage extends StatelessWidget {
                       child: _buildBotaoAcao(context, e, jaParticipa),
                     ),
                     const SizedBox(height: 24),
-
-                    // ---- Lista de participantes por extenso ----
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
@@ -2444,8 +2652,6 @@ class EventoDetalhePage extends StatelessWidget {
   }
 }
 
-/// Linha de um participante, com nome por extenso e botão do Facebook.
-/// O botão está SEMPRE visível e abre o SEU link.
 class _LinhaParticipante extends StatelessWidget {
   final int posicao;
   final Participante participante;
@@ -2559,6 +2765,193 @@ class _LinhaParticipante extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PAREDE DE BROCHES ("Minha Geladeira") — tela dedicada
+// ============================================================
+
+class ParedeBrochesScreen extends StatelessWidget {
+  final List<EventoParticipado> historico;
+
+  const ParedeBrochesScreen({super.key, required this.historico});
+
+  @override
+  Widget build(BuildContext context) {
+    final broches = BrochesService.calcularBroches(historico);
+    final conquistados = broches.where((b) => b.desbloqueado).length;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF2F1EC),
+      appBar: AppBar(
+        title: const Text('Minha Geladeira'),
+        backgroundColor: const Color(0xFFF2F1EC),
+        foregroundColor: Colors.black87,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          _ProgressoHeader(
+            conquistados: conquistados,
+            total: broches.length,
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(20),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 20,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.8,
+              ),
+              itemCount: broches.length,
+              itemBuilder: (context, index) {
+                final item = broches[index];
+                return _BrocheMagnet(
+                  item: item,
+                  onTap: () => _mostrarDetalhe(context, item),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _mostrarDetalhe(BuildContext context, BrocheConquistado item) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('${item.broche.emoji}  ${item.broche.nome}'),
+        content: Text(
+          item.desbloqueado
+              ? 'Conquistado em ${_formatarData(item.dataConquista!)}'
+                  '${item.eventoConquistadoNome != null ? '\nEvento: ${item.eventoConquistadoNome}' : ''}'
+              : '${item.broche.descricao}\n\nVá a um evento correspondente para desbloquear este broche!',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatarData(DateTime data) {
+    return '${data.day.toString().padLeft(2, '0')}/'
+        '${data.month.toString().padLeft(2, '0')}/${data.year}';
+  }
+}
+
+class _ProgressoHeader extends StatelessWidget {
+  final int conquistados;
+  final int total;
+
+  const _ProgressoHeader({required this.conquistados, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final progresso = total == 0 ? 0.0 : conquistados / total;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$conquistados de $total broches conquistados',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progresso,
+              minHeight: 10,
+              backgroundColor: Colors.grey.shade300,
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFE0A72E)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrocheMagnet extends StatelessWidget {
+  final BrocheConquistado item;
+  final VoidCallback? onTap;
+
+  const _BrocheMagnet({required this.item, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final broche = item.broche;
+    final corFundo =
+        item.desbloqueado ? broche.corPrincipal : Colors.grey.shade400;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Semantics(
+        label: item.desbloqueado
+            ? '${broche.nome}, conquistado'
+            : '${broche.nome}, bloqueado. ${broche.descricao}',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: corFundo.withOpacity(item.desbloqueado ? 1 : 0.35),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color:
+                      item.desbloqueado ? Colors.white : Colors.grey.shade500,
+                  width: 3,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: item.desbloqueado
+                    ? Text(broche.emoji, style: const TextStyle(fontSize: 34))
+                    : Icon(Icons.lock_outline,
+                        color: Colors.grey.shade700, size: 30),
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 90,
+              child: Text(
+                broche.nome,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      item.desbloqueado ? Colors.black87 : Colors.grey.shade600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
